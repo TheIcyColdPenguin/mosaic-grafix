@@ -7,6 +7,10 @@ It has been tested on a single no-name 3.5 inch RPi compatible SPI display power
 
 Disclaimer: This setup is meant for a Raspberry Pi Lite system with no xorg or wayland installed, or any other application that would attempt to use the frame buffer. It has NOT been tested on any other OSes. Use only if you have debugging time to spare.
 
+This repo is part of a larger project I'm working on called Mosaic.
+
+
+
 ## Installation
 
 The only prerequisite is the existence of a frame buffer device, which you can check with 
