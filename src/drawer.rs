@@ -2,6 +2,8 @@
 
 use std::error::Error;
 
+use image::{GenericImageView, imageops::FilterType};
+
 use crate::framebuffer::{Colour, FrameBufferFile};
 
 // DEFINITIONS
@@ -11,6 +13,13 @@ pub struct Drawer {
     fb: FrameBufferFile,
     stroke: Colour,
     fill: Colour,
+}
+
+#[derive(Debug)]
+pub enum ImageResizeOptions {
+    Fit,
+    Fill,
+    Stretch,
 }
 
 // IMPLS
@@ -75,6 +84,37 @@ impl Drawer {
                 y += sy;
             }
         }
+    }
+
+    pub fn image_str(
+        &mut self,
+        image: &str,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        image_option: ImageResizeOptions,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let og_image = image::ImageReader::open(image)?.decode()?;
+        let nwidth = x1.abs_diff(x0);
+        let nheight = y1.abs_diff(y0);
+        let resized_image = match image_option {
+            ImageResizeOptions::Fit => og_image.resize(nwidth, nheight, FilterType::Nearest),
+            ImageResizeOptions::Stretch => {
+                og_image.resize_exact(nwidth, nheight, FilterType::Nearest)
+            }
+            ImageResizeOptions::Fill => {
+                og_image.resize_to_fill(nwidth, nheight, FilterType::Nearest)
+            }
+        };
+
+        for (x, y, rgb) in resized_image.pixels() {
+            let x = x as i32;
+            let y = y as i32;
+            self.fb.point((x0 + x, y0 + y), rgb.into());
+        }
+
+        Ok(())
     }
 
     pub fn draw(&mut self) -> Result<(), Box<dyn Error>> {

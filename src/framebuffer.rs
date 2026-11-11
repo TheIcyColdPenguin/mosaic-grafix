@@ -4,7 +4,8 @@ use std::fs::{self, File};
 use std::io::Write;
 
 use derive_more::Deref;
-use memmap2::MmapMut;
+use image::Pixel;
+use memmap2::{MmapMut, MmapOptions};
 
 // DEFINITIONS
 
@@ -18,6 +19,12 @@ pub struct FrameBufferFile {
     mmap: MmapMut,
     pub w: i32,
     pub h: i32,
+
+    // to allow for automatic rotation
+    #[allow(unused)]
+    actual_w: i32,
+    #[allow(unused)]
+    actual_h: i32,
 }
 
 // IMPLS
@@ -25,11 +32,11 @@ pub struct FrameBufferFile {
 impl Colour {
     pub const WHITE: Self = Self::rgb(255, 255, 255);
     pub const BLACK: Self = Self::rgb(0, 0, 0);
-    
+
     pub const RED: Self = Self::rgb(255, 0, 0);
     pub const GREEN: Self = Self::rgb(0, 255, 0);
     pub const BLUE: Self = Self::rgb(0, 0, 255);
-    
+
     pub const CYAN: Self = Self::rgb(0, 255, 255);
     pub const MAGENTA: Self = Self::rgb(255, 0, 255);
     pub const YELLOW: Self = Self::rgb(255, 255, 0);
@@ -41,6 +48,16 @@ impl Colour {
     pub fn as_bytes(&self) -> (u8, u8) {
         let val = self.to_le_bytes();
         return (val[0], val[1]);
+    }
+}
+
+impl<T> From<T> for Colour
+where
+    T: Pixel<Subpixel = u8>,
+{
+    fn from(value: T) -> Self {
+        let channels = value.channels();
+        return Colour::rgb(channels[0], channels[1], channels[2]);
     }
 }
 
@@ -70,17 +87,28 @@ impl FrameBufferFile {
             ))?;
         }
 
-        let w = size[0];
-        let h = size[1];
+        let actual_w = size[0];
+        let actual_h = size[1];
+
+        let w = actual_h;
+        let h = actual_w;
+
         let bits_per_pixel: i32 = bits_per_pixel_str.trim().parse()?;
 
-        let buf: Vec<_> = vec![0; (bits_per_pixel / 8 * w * h) as usize];
+        let buf: Vec<_> = vec![0u8; (bits_per_pixel / 8 * w * h) as usize];
         // write in order to tell mmap how large the file is
         fd.write_all(&buf)?;
 
-        let mmap = unsafe { MmapMut::map_mut(&fd)? };
+        let mmap = unsafe { MmapOptions::new().len(buf.len()).map_mut(&fd)? };
 
-        Ok(Self { fd, mmap, w, h })
+        Ok(Self {
+            fd,
+            mmap,
+            w,
+            h,
+            actual_w,
+            actual_h,
+        })
     }
 
     pub fn fill(&mut self, val: Colour) {
@@ -96,12 +124,12 @@ impl FrameBufferFile {
             let col = val.as_bytes();
 
             self.mmap[index] = col.0;
-            self.mmap[index + 1] = col.1
+            self.mmap[index + 1] = col.1;
         }
     }
 
     pub fn is_in_range(&self, pos: (i32, i32)) -> bool {
-        return pos.0 > 0 && pos.0 < self.w && pos.1 > 0 && pos.1 < self.h;
+        return pos.0 >= 0 && pos.0 < self.w && pos.1 >= 0 && pos.1 < self.h;
     }
 
     pub fn flush(&mut self) -> Result<(), Box<dyn Error>> {
@@ -112,6 +140,12 @@ impl FrameBufferFile {
     }
 
     fn at(&self, pos: (i32, i32)) -> usize {
-        (self.w * (pos.1) + pos.0) as usize
+        // automatic rotation by changing index system
+
+        // Old
+        // 2*(self.w * (pos.1) + pos.0) as usize
+
+        // New with Rotation
+        2 * (self.actual_w * (pos.0) + (self.actual_w - 1 - pos.1)) as usize
     }
 }
