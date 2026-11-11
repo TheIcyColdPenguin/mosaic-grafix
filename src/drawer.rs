@@ -2,22 +2,9 @@
 
 use std::error::Error;
 
-use derive_more::Deref;
-
-use crate::framebuffer::FrameBufferFile;
-
-// MACROS
-
-macro_rules! rgb565 {
-    ($r:expr, $g:expr, $b:expr) => {
-        (($b >> 3) << 11) | (($g >> 2) << 5) | ($r >> 3)
-    };
-}
+use crate::framebuffer::{Colour, FrameBufferFile};
 
 // DEFINITIONS
-
-#[derive(Debug, Deref)]
-pub struct Colour(u16);
 
 #[derive(Debug)]
 pub struct Drawer {
@@ -28,26 +15,14 @@ pub struct Drawer {
 
 // IMPLS
 
-impl Colour {
-    pub const WHITE: Self = Self::new(255, 255, 255);
-    pub const BLACK: Self = Self::new(0, 0, 0);
-    pub const RED: Self = Self::new(255, 0, 0);
-    pub const GREEN: Self = Self::new(0, 255, 0);
-    pub const BLUE: Self = Self::new(0, 0, 255);
-
-    pub const fn new(r: u8, g: u8, b: u8) -> Self {
-        return Colour(rgb565!(r as u16, g as u16, b as u16));
-    }
-}
-
 impl Drawer {
     pub fn new(device_name: &str) -> Result<Self, Box<dyn Error>> {
         let fb = FrameBufferFile::new(device_name)?;
 
         return Ok(Drawer {
             fb,
-            fill: Colour(rgb565!(0, 0, 0)),
-            stroke: Colour(rgb565!(0, 0, 0)),
+            fill: Colour::BLACK,
+            stroke: Colour::BLACK,
         });
     }
 
@@ -62,11 +37,11 @@ impl Drawer {
     // drawing functions
 
     pub fn background(&mut self, col: Colour) {
-        self.fb.fill(*col);
+        self.fb.fill(col);
     }
 
-    pub fn ponit(&mut self, x: i32, y: i32, col: Colour) {
-        self.fb[(x, y)] = *col;
+    pub fn point(&mut self, x: i32, y: i32, col: Colour) {
+        self.fb.point((x, y), col);
     }
 
     pub fn line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32) {
@@ -80,9 +55,7 @@ impl Drawer {
         let mut y = y0;
 
         loop {
-            if self.fb.is_in_range((x, y)) {
-                self.fb[(x, y)] = *self.stroke;
-            }
+            self.fb.point((x, y), self.stroke);
 
             let e2 = 2 * error;
 

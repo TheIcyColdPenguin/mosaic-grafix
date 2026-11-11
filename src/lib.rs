@@ -1,4 +1,5 @@
 mod drawer;
 mod framebuffer;
 
-pub use drawer::{Colour, Drawer};
+pub use drawer::Drawer;
+pub use framebuffer::Colour;

@@ -6,3 +6,4 @@ description = "Easy to use drawing library for cheap RGB565 displays"
 
 [dependencies]
 derive_more = {version = "2.1.1", features=["deref", "deref_mut"]}
+memmap2 = "0.9.12"
