@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::fs::{self, File};
 use std::io::Write;
+use std::ops::{Index, IndexMut};
 
 use derive_more::Deref;
 use image::Pixel;
@@ -9,22 +10,18 @@ use memmap2::{MmapMut, MmapOptions};
 
 // DEFINITIONS
 
-#[derive(Debug, Deref, Clone, Copy)]
+#[derive(Debug, Deref, Clone, Copy, PartialEq, Eq)]
 pub struct Colour(pub u16);
 
 #[derive(Debug)]
-pub struct FrameBufferFile {
+pub struct FrameBufferFile<'a> {
     #[allow(unused)]
     fd: File,
     mmap: MmapMut,
+    pixels: &'a mut [u16],
+
     pub w: i32,
     pub h: i32,
-
-    // to allow for automatic rotation
-    #[allow(unused)]
-    actual_w: i32,
-    #[allow(unused)]
-    actual_h: i32,
 }
 
 // IMPLS
@@ -42,12 +39,16 @@ impl Colour {
     pub const YELLOW: Self = Self::rgb(255, 255, 0);
 
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
-        return Colour((((b as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | ((r as u16) >> 3));
+        return Colour((((r as u16) >> 3) << 11) | (((g as u16) >> 2) << 5) | ((b as u16) >> 3));
     }
 
     pub fn as_bytes(&self) -> (u8, u8) {
         let val = self.to_le_bytes();
         return (val[0], val[1]);
+    }
+
+    pub fn as_raw(&self) -> u16 {
+        return self.0;
     }
 }
 
@@ -61,7 +62,7 @@ where
     }
 }
 
-impl FrameBufferFile {
+impl<'a> FrameBufferFile<'a> {
     pub fn new(device_name: &str) -> Result<Self, Box<dyn Error>> {
         let mut fd = File::options()
             .write(true)
@@ -87,11 +88,8 @@ impl FrameBufferFile {
             ))?;
         }
 
-        let actual_w = size[0];
-        let actual_h = size[1];
-
-        let w = actual_h;
-        let h = actual_w;
+        let w = size[0];
+        let h = size[1];
 
         let bits_per_pixel: i32 = bits_per_pixel_str.trim().parse()?;
 
@@ -99,37 +97,35 @@ impl FrameBufferFile {
         // write in order to tell mmap how large the file is
         fd.write_all(&buf)?;
 
-        let mmap = unsafe { MmapOptions::new().len(buf.len()).map_mut(&fd)? };
+        let mut mmap = unsafe { MmapOptions::new().len(buf.len()).map_mut(&fd)? };
+
+        // remap to u16
+        let m_ptr = mmap.as_mut_ptr() as *mut u16;
+        let aligned = m_ptr.is_aligned();
+        if !aligned {
+            return Err("Unaligned map".into());
+        }
+        let m_len = mmap.len() / 2;
+
+        let pixels = unsafe { std::slice::from_raw_parts_mut(m_ptr, m_len) };
 
         Ok(Self {
             fd,
             mmap,
             w,
             h,
-            actual_w,
-            actual_h,
+            pixels,
         })
     }
 
     pub fn fill(&mut self, val: Colour) {
-        let col = val.as_bytes();
-        for chunk in self.mmap.chunks_exact_mut(2) {
-            chunk[0] = col.0;
-            chunk[1] = col.1;
-        }
+        self.pixels.fill(val.as_raw());
     }
+
     pub fn point(&mut self, pos: (i32, i32), val: Colour) {
-        if self.is_in_range(pos) {
-            let index = self.at(pos);
-            let col = val.as_bytes();
-
-            self.mmap[index] = col.0;
-            self.mmap[index + 1] = col.1;
+        if let Some(index) = self.at(pos) {
+            self.pixels[index] = val.as_raw();
         }
-    }
-
-    pub fn is_in_range(&self, pos: (i32, i32)) -> bool {
-        return pos.0 >= 0 && pos.0 < self.w && pos.1 >= 0 && pos.1 < self.h;
     }
 
     pub fn flush(&mut self) -> Result<(), Box<dyn Error>> {
@@ -139,13 +135,11 @@ impl FrameBufferFile {
         Ok(())
     }
 
-    fn at(&self, pos: (i32, i32)) -> usize {
-        // automatic rotation by changing index system
-
-        // Old
-        // 2*(self.w * (pos.1) + pos.0) as usize
-
-        // New with Rotation
-        2 * (self.actual_w * (pos.0) + (self.actual_w - 1 - pos.1)) as usize
+    fn at(&self, pos: (i32, i32)) -> Option<usize> {
+        if pos.0 >= 0 && pos.0 < self.w && pos.1 >= 0 && pos.1 < self.h {
+            Some((self.w * (pos.1) + (pos.0)) as usize)
+        } else {
+            None
+        }
     }
 }

@@ -9,8 +9,8 @@ use crate::framebuffer::{Colour, FrameBufferFile};
 // DEFINITIONS
 
 #[derive(Debug)]
-pub struct Drawer {
-    fb: FrameBufferFile,
+pub struct Drawer<'a> {
+    fb: FrameBufferFile<'a>,
     stroke: Colour,
     fill: Colour,
 }
@@ -24,7 +24,7 @@ pub enum ImageResizeOptions {
 
 // IMPLS
 
-impl Drawer {
+impl<'a> Drawer<'a> {
     pub fn new(device_name: &str) -> Result<Self, Box<dyn Error>> {
         let fb = FrameBufferFile::new(device_name)?;
 
