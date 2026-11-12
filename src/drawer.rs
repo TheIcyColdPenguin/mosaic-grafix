@@ -2,7 +2,7 @@
 
 use std::error::Error;
 
-use image::{GenericImageView, imageops::FilterType};
+use image::{DynamicImage, GenericImageView, imageops::FilterType};
 
 use crate::framebuffer::{Colour, FrameBufferFile};
 
@@ -91,29 +91,73 @@ impl Drawer {
         image: &str,
         x0: i32,
         y0: i32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let og_image = image::ImageReader::open(image)?.decode()?;
+
+        self.image(&og_image, x0, y0)?;
+
+        Ok(())
+    }
+
+    pub fn image_str_resized(
+        &mut self,
+        image: &str,
+        x0: i32,
+        y0: i32,
         x1: i32,
         y1: i32,
         image_option: ImageResizeOptions,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let og_image = image::ImageReader::open(image)?.decode()?;
+
+        self.image_resized(&og_image, x0, y0, x1, y1, image_option)?;
+
+        Ok(())
+    }
+
+    pub fn image_resized(
+        &mut self,
+        image: &DynamicImage,
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+        image_option: ImageResizeOptions,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let nwidth = x1.abs_diff(x0);
         let nheight = y1.abs_diff(y0);
-        let resized_image = match image_option {
-            ImageResizeOptions::Fit => og_image.resize(nwidth, nheight, FilterType::Nearest),
-            ImageResizeOptions::Stretch => {
-                og_image.resize_exact(nwidth, nheight, FilterType::Nearest)
-            }
-            ImageResizeOptions::Fill => {
-                og_image.resize_to_fill(nwidth, nheight, FilterType::Nearest)
-            }
+
+        // only resize if required
+        if nwidth == image.width() && nheight == image.height() {
+            self.image(image, x0, y0)?;
+        } else {
+            let resized_image = match image_option {
+                ImageResizeOptions::Fit => image.resize(nwidth, nheight, FilterType::Nearest),
+                ImageResizeOptions::Stretch => {
+                    image.resize_exact(nwidth, nheight, FilterType::Nearest)
+                }
+                ImageResizeOptions::Fill => {
+                    image.resize_to_fill(nwidth, nheight, FilterType::Nearest)
+                }
+            };
+
+            self.image(&resized_image, x0, y0)?;
         };
 
-        for (x, y, rgb) in resized_image.pixels() {
+        Ok(())
+    }
+
+    pub fn image(
+        &mut self,
+        image: &DynamicImage,
+        x0: i32,
+        y0: i32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (x, y, rgb) in image.pixels() {
             let x = x as i32;
             let y = y as i32;
             self.fb.point((x0 + x, y0 + y), rgb.into());
         }
-
         Ok(())
     }
 
